@@ -5,9 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -30,15 +28,9 @@ func Initialize(signSecret string, token string) *IzySlack {
 	return &izySlack
 }
 
-func (receiver *IzySlack) IsChallengeRequest(requestBody *io.ReadCloser) (bool, *string, error) {
-	body, err := io.ReadAll(*requestBody)
-
-	if err != nil {
-		return false, nil, err
-	}
-
+func (receiver *IzySlack) IsChallengeRequest(body []byte) (bool, *string, error) {
 	var data map[string]any
-	err = json.Unmarshal(body, &data)
+	err := json.Unmarshal(body, &data)
 
 	if err != nil {
 		return false, nil, err
@@ -55,19 +47,9 @@ func (receiver *IzySlack) HandleChallengeRequest(w http.ResponseWriter, challeng
 	fmt.Fprintln(w, challenge, http.StatusOK)
 }
 
-func (receiver *IzySlack) ReceiveEvent(r *http.Request) (*IzySlackEvent, error) {
-	if r.Method != http.MethodPost {
-		return nil, errors.New("Method not allowed.")
-	}
-
-	body, err := io.ReadAll(r.Body)
-
-	if err != nil {
-		return nil, err
-	}
-
+func (receiver *IzySlack) ReceiveEvent(body []byte) (*IzySlackEvent, error) {
 	var event IzySlackEvent
-	err = json.Unmarshal(body, &event)
+	err := json.Unmarshal(body, &event)
 
 	if err != nil {
 		return nil, err
@@ -76,9 +58,9 @@ func (receiver *IzySlack) ReceiveEvent(r *http.Request) (*IzySlackEvent, error) 
 	return &event, nil
 }
 
-func (receiver *IzySlack) VerifySignature(r *http.Request) bool {
-	slackTimestamp := r.Header.Get("X-Slack-Request-Timestamp")
-	slackSignature := r.Header.Get("X-Slack-Signature")
+func (receiver *IzySlack) VerifySignature(header http.Header, body []byte) bool {
+	slackTimestamp := header.Get("X-Slack-Request-Timestamp")
+	slackSignature := header.Get("X-Slack-Signature")
 
 	ts, err := time.ParseDuration(slackTimestamp + "s")
 	if err != nil || time.Since(time.Unix(int64(ts.Seconds()), 0)) > 5*time.Minute {
@@ -86,18 +68,11 @@ func (receiver *IzySlack) VerifySignature(r *http.Request) bool {
 		return false
 	}
 
-	readBody, err := io.ReadAll(r.Body)
-
-	if err != nil {
-		return false
-	}
-
-	baseString := fmt.Sprintf("v0:%s:%s", slackTimestamp, string(readBody))
+	baseString := fmt.Sprintf("v0:%s:%s", slackTimestamp, string(body))
 	mac := hmac.New(sha256.New, []byte(receiver.Credentials.SlackSignSecret))
 	mac.Write([]byte(baseString))
 	expectedSignature := "v0=" + hex.EncodeToString(mac.Sum(nil))
 	return hmac.Equal([]byte(expectedSignature), []byte(slackSignature))
-
 }
 
 func (receiver *IzySlack) SendMessage(channel string, text string) error {
