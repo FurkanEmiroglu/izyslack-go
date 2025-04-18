@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/slack-go/slack"
@@ -45,6 +46,22 @@ func (receiver *IzySlack) IsChallengeRequest(body []byte) (bool, *string, error)
 
 func (receiver *IzySlack) HandleChallengeRequest(w http.ResponseWriter, challenge string) {
 	fmt.Fprintln(w, challenge, http.StatusOK)
+}
+
+func (receiver *IzySlack) UploadFile(channel string, filePath string) error {
+	params := slack.UploadFileV2Parameters{
+		Channel: channel,
+		File:    filePath,
+		Title:   "File Upload",
+	}
+
+	_, err := receiver.Client.UploadFileV2(params)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (receiver *IzySlack) ReceiveEvent(body []byte) (*IzySlackEvent, error) {
@@ -96,5 +113,39 @@ func (receiver *IzySlack) ReplyMessage(channel string, text string, ts string) e
 		fmt.Println("Error while replying in slack")
 		return err
 	}
+	return nil
+}
+
+func (receiver *IzySlack) ReplyWithFile(channel string, filePath string, threadTs string) error {
+	// Dosya yolunun geçerli olduğundan emin ol
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("dosya açılamadı: %v", err)
+	}
+	defer file.Close()
+
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("dosya boyutu alınamadı: %v", err)
+	}
+
+	fileSize := fileInfo.Size()
+
+	params := slack.UploadFileV2Parameters{
+		Channel:         channel,
+		File:            filePath, // Dosya yolunu burada kullanıyoruz
+		Filename:        "response.txt",
+		ThreadTimestamp: threadTs,
+		FileSize:        int(fileSize),
+	}
+
+	// Dosyayı Slack'e yükle
+	fileUpload, err := receiver.Client.UploadFileV2(params)
+	if err != nil {
+		return fmt.Errorf("dosya yüklenemedi: %v", err)
+	}
+
+	// Dosya başarıyla yüklendi
+	fmt.Println("Dosya başarıyla yüklendi:", fileUpload.Title)
 	return nil
 }
