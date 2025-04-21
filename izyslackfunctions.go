@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/aws/aws-lambda-go/events"
 	"github.com/slack-go/slack"
 )
 
@@ -44,6 +45,16 @@ func (receiver *IzySlack) IsChallengeRequest(body []byte) (bool, *string, error)
 	}
 }
 
+func (receiver *IzySlack) HandleChallengeRequestLambda(challenge string) events.LambdaFunctionURLResponse {
+	return events.LambdaFunctionURLResponse{
+		StatusCode:      http.StatusOK,
+		Headers:         map[string]string{"Content-Type": "text/plain"},
+		Body:            challenge,
+		IsBase64Encoded: false,
+		Cookies:         nil,
+	}
+}
+
 func (receiver *IzySlack) HandleChallengeRequest(w http.ResponseWriter, challenge string) {
 	fmt.Fprintln(w, challenge, http.StatusOK)
 }
@@ -73,6 +84,23 @@ func (receiver *IzySlack) ReceiveEvent(body []byte) (*IzySlackEvent, error) {
 	}
 
 	return &event, nil
+}
+
+func (receiver *IzySlack) VerifySignatureLambda(header map[string]string, body []byte) bool {
+	slackTimestamp := header["X-Slack-Request-Timestamp"]
+	slackSignature := header["X-Slack-Signature"]
+
+	ts, err := time.ParseDuration(slackTimestamp + "s")
+	if err != nil || time.Since(time.Unix(int64(ts.Seconds()), 0)) > 5*time.Minute {
+		fmt.Println("Timestamp is too old or invalid")
+		return false
+	}
+
+	baseString := fmt.Sprintf("v0:%s:%s", slackTimestamp, string(body))
+	mac := hmac.New(sha256.New, []byte(receiver.Credentials.SlackSignSecret))
+	mac.Write([]byte(baseString))
+	expectedSignature := "v0=" + hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(expectedSignature), []byte(slackSignature))
 }
 
 func (receiver *IzySlack) VerifySignature(header http.Header, body []byte) bool {
