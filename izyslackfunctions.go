@@ -177,3 +177,13 @@ func (receiver *IzySlack) ReplyWithFile(channel string, filePath string, threadT
 	fmt.Println("Dosya başarıyla yüklendi:", fileUpload.Title)
 	return nil
 }
+
+func (receiver *IzySlack) GetUserInfo(userId string) (*slack.User, error) {
+	identity, err := receiver.Client.GetUserInfo(userId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return identity, nil
+}
