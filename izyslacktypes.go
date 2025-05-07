@@ -37,6 +37,7 @@ type IzySlackSubEvent struct {
 	Team        string         `json:"team"`
 	Blocks      []IzSlackBlock `json:"blocks"`
 	Channel     string         `json:"channel"`
+	ChannelType string         `json:"channel_type"`
 	EventTS     string         `json:"event_ts"`
 }
 
